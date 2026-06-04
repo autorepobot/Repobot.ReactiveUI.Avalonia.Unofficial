@@ -1,0 +1,79 @@
+name: Publish unofficial ReactiveUI.Avalonia
+
+on:
+  workflow_dispatch:
+    inputs:
+      sourceVersion:
+        description: "Official ReactiveUI.Avalonia version to repackage"
+        required: true
+        default: "11.4.12"
+      packageVersion:
+        description: "Unofficial package version to publish"
+        required: true
+        default: "11.4.12"
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+
+      - name: Download official package
+        run: |
+          curl -L -o official.nupkg \
+            "https://www.nuget.org/api/v2/package/ReactiveUI.Avalonia/${{ inputs.sourceVersion }}"
+
+      - name: Repack as unofficial package
+        shell: bash
+        run: |
+          set -e
+
+          mkdir pkg
+          unzip official.nupkg -d pkg
+
+          cd pkg
+
+          rm -f .signature.p7s
+          find . -name ".DS_Store" -delete
+
+          python3 <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+
+          nuspec = Path("ReactiveUI.Avalonia.nuspec")
+          tree = ET.parse(nuspec)
+          root = tree.getroot()
+
+          ns = ""
+          if root.tag.startswith("{"):
+              ns = root.tag.split("}")[0] + "}"
+
+          metadata = root.find(f"{ns}metadata")
+          metadata.find(f"{ns}id").text = "Repobot.ReactiveUI.Avalonia.Unofficial"
+          metadata.find(f"{ns}version").text = "${{ inputs.packageVersion }}"
+
+          description = metadata.find(f"{ns}description")
+          if description is not None:
+              description.text = (
+                  (description.text or "")
+                  + "\n\nUnofficial repack of ReactiveUI.Avalonia "
+                  + "${{ inputs.sourceVersion }}"
+                  + ". Package signature removed due to revoked author certificate. "
+                  + "DLL/content unchanged from the original package."
+              )
+
+          tree.write(nuspec, encoding="utf-8", xml_declaration=True)
+          PY
+
+          zip -r ../Repobot.ReactiveUI.Avalonia.Unofficial.${{ inputs.packageVersion }}.nupkg . \
+            -x "*.DS_Store"
+
+      - name: Push to NuGet
+        run: |
+          dotnet nuget push \
+            "Repobot.ReactiveUI.Avalonia.Unofficial.${{ inputs.packageVersion }}.nupkg" \
+            --source https://api.nuget.org/v3/index.json \
+            --api-key "${{ secrets.NUGET_API_KEY }}" \
+            --skip-duplicate
