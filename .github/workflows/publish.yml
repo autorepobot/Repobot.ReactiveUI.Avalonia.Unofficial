@@ -4,23 +4,24 @@ on:
   workflow_dispatch:
     inputs:
       sourceVersion:
-        description: "Official ReactiveUI.Avalonia version to repackage"
         required: true
         default: "11.4.12"
       packageVersion:
-        description: "Unofficial package version to publish"
         required: true
-        default: "11.4.12"
+        default: "11.4.12.3"
 
 jobs:
   publish:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v5
-        with:
-          dotnet-version: "10.0.x"
+      - name: Setup NuGet
+        uses: NuGet/setup-nuget@v2
+
+      - name: Install Mono
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y mono-runtime
 
       - name: Download official package
         run: |
@@ -32,66 +33,76 @@ jobs:
         run: |
           set -e
 
-          mkdir src cleanproj
+          mkdir src cleanpkg
           unzip -q official.nupkg -d src
 
-          find src -name ".DS_Store" -delete
+          cp -R src/lib cleanpkg/
+          cp -R src/LICENSE cleanpkg/ || true
+          cp src/README.md cleanpkg/ || true
+          cp src/logo.png cleanpkg/ || true
+          find cleanpkg -name ".DS_Store" -delete
 
-          mkdir -p cleanproj/lib
-          cp -R src/lib/* cleanproj/lib/
+          python3 <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
 
-          cp -R src/LICENSE cleanproj/ || true
-          cp src/logo.png cleanproj/ || true
+          package_id = "Repobot.ReactiveUI.Avalonia.Unofficial"
+          package_version = "${{ inputs.packageVersion }}"
+          source_version = "${{ inputs.sourceVersion }}"
 
-          cat > cleanproj/README.md <<EOF
-          # Repobot.ReactiveUI.Avalonia.Unofficial
+          src_nuspec = Path("src/ReactiveUI.Avalonia.nuspec")
+          tree = ET.parse(src_nuspec)
+          root = tree.getroot()
 
-          Unofficial repack of \`ReactiveUI.Avalonia\` \`${{ inputs.sourceVersion }}\`.
+          ns = ""
+          if root.tag.startswith("{"):
+              ns = root.tag.split("}")[0] + "}"
 
-          This package copies the original DLL/XML/content from the official \`ReactiveUI.Avalonia\` NuGet package.
+          metadata = root.find(f"{ns}metadata")
+          metadata.find(f"{ns}id").text = package_id
+          metadata.find(f"{ns}version").text = package_version
 
-          The original NuGet author signature is not included because the signing certificate was revoked and caused \`NU3012\` restore failures.
+          authors = metadata.find(f"{ns}authors")
+          if authors is not None:
+              authors.text = "ReactiveUI contributors; unofficial repack by Repobot"
 
-          This package is not affiliated with or endorsed by the ReactiveUI project.
+          description = metadata.find(f"{ns}description")
+          if description is not None:
+              description.text = (
+                  (description.text or "")
+                  + "\n\nUnofficial repack of ReactiveUI.Avalonia "
+                  + source_version
+                  + ". Package signature removed due to revoked author certificate. "
+                  + "Original dependency groups are preserved."
+              )
 
-          Use this package only as a temporary workaround.
-          EOF
+          files = root.find(f"{ns}files")
+          if files is not None:
+              root.remove(files)
 
-          cat > cleanproj/Repobot.ReactiveUI.Avalonia.Unofficial.csproj <<EOF
-          <Project Sdk="Microsoft.NET.Sdk">
-            <PropertyGroup>
-              <TargetFramework>net8.0</TargetFramework>
-              <PackageId>Repobot.ReactiveUI.Avalonia.Unofficial</PackageId>
-              <Title>Repobot ReactiveUI.Avalonia Unofficial Repack</Title>
-              <Version>${{ inputs.packageVersion }}</Version>
-              <Authors>ReactiveUI contributors; unofficial repack by Repobot</Authors>
-              <Company>Repobot</Company>
-              <Product>Repobot ReactiveUI.Avalonia Unofficial Repack</Product>
-              <Description>Unofficial repack of ReactiveUI.Avalonia ${{ inputs.sourceVersion }}. This package copies the original DLL/XML/content from the official ReactiveUI.Avalonia package. The original NuGet author signature is not included because the signing certificate was revoked and caused NU3012 restore failures. This package is not affiliated with or endorsed by the ReactiveUI project.</Description>
-              <PackageTags>ReactiveUI Avalonia unofficial repack unsigned NU3012</PackageTags>
-              <PackageProjectUrl>https://github.com/autorepobot/Repobot.ReactiveUI.Avalonia.Unofficial</PackageProjectUrl>
-              <RepositoryUrl>https://github.com/autorepobot/Repobot.ReactiveUI.Avalonia.Unofficial</RepositoryUrl>
-              <RepositoryType>git</RepositoryType>
-              <PackageLicenseExpression>MIT</PackageLicenseExpression>
-              <PackageReadmeFile>README.md</PackageReadmeFile>
-              <PackageIcon>logo.png</PackageIcon>
-              <IncludeBuildOutput>false</IncludeBuildOutput>
-              <NoDefaultExcludes>true</NoDefaultExcludes>
-              <NoPackageAnalysis>true</NoPackageAnalysis>
-            </PropertyGroup>
+          files = ET.SubElement(root, f"{ns}files")
 
-            <ItemGroup>
-              <None Include="lib/**/*" Pack="true" PackagePath="lib/" />
-              <None Include="LICENSE/**/*" Pack="true" PackagePath="LICENSE/" />
-              <None Include="README.md" Pack="true" PackagePath="" />
-              <None Include="logo.png" Pack="true" PackagePath="" />
-            </ItemGroup>
-          </Project>
-          EOF
+          def add_file(src, target):
+              f = ET.SubElement(files, f"{ns}file")
+              f.set("src", src)
+              f.set("target", target)
 
-          dotnet pack cleanproj/Repobot.ReactiveUI.Avalonia.Unofficial.csproj \
-            -c Release \
-            -o .
+          add_file("lib/**/*", "lib")
+          add_file("LICENSE/**/*", "LICENSE")
+          add_file("README.md", "")
+          add_file("logo.png", "")
+
+          tree.write(
+              f"cleanpkg/{package_id}.nuspec",
+              encoding="utf-8",
+              xml_declaration=True
+          )
+          PY
+
+          nuget pack "cleanpkg/Repobot.ReactiveUI.Avalonia.Unofficial.nuspec" \
+            -BasePath cleanpkg \
+            -OutputDirectory . \
+            -NoPackageAnalysis
 
       - name: Push to NuGet
         run: |
