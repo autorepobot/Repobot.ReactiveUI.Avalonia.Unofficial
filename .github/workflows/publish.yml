@@ -65,6 +65,26 @@ jobs:
               )
 
           tree.write(nuspec, encoding="utf-8", xml_declaration=True)
+
+          rels = Path("_rels/.rels")
+          if rels.exists():
+              tree = ET.parse(rels)
+              root = tree.getroot()
+              for child in list(root):
+                  if child.attrib.get("Target") == "/.signature.p7s":
+                      root.remove(child)
+              tree.write(rels, encoding="utf-8", xml_declaration=True)
+
+          content_types = Path("[Content_Types].xml")
+          if content_types.exists():
+              tree = ET.parse(content_types)
+              root = tree.getroot()
+              for child in list(root):
+                  if child.attrib.get("Extension") == "p7s":
+                      root.remove(child)
+                  if child.attrib.get("PartName") == "/.signature.p7s":
+                      root.remove(child)
+              tree.write(content_types, encoding="utf-8", xml_declaration=True)
           PY
 
           zip -r ../Repobot.ReactiveUI.Avalonia.Unofficial.${{ inputs.packageVersion }}.nupkg . \
