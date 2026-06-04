@@ -20,7 +20,7 @@ jobs:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
         with:
-          dotnet-version: "10.0.1xx"
+          dotnet-version: "10.0.x"
 
       - name: Download official package
         run: |
@@ -49,9 +49,16 @@ jobs:
             <PropertyGroup>
               <TargetFramework>net8.0</TargetFramework>
               <PackageId>Repobot.ReactiveUI.Avalonia.Unofficial</PackageId>
+              <Title>Repobot ReactiveUI.Avalonia Unofficial Repack</Title>
               <Version>${{ inputs.packageVersion }}</Version>
               <Authors>ReactiveUI contributors; unofficial repack by Repobot</Authors>
-              <Description>Unofficial repack of ReactiveUI.Avalonia ${{ inputs.sourceVersion }}. Package signature removed due to revoked author certificate. DLL/XML/content copied from the original package.</Description>
+              <Company>Repobot</Company>
+              <Product>Repobot ReactiveUI.Avalonia Unofficial Repack</Product>
+              <Description>Unofficial repack of ReactiveUI.Avalonia ${{ inputs.sourceVersion }}. This package copies the original DLL/XML/content from the official ReactiveUI.Avalonia package. The original NuGet author signature is not included because the signing certificate was revoked and caused NU3012 restore failures. This package is not affiliated with or endorsed by the ReactiveUI project.</Description>
+              <PackageTags>ReactiveUI Avalonia unofficial repack unsigned NU3012</PackageTags>
+              <PackageProjectUrl>https://github.com/autorepobot/Repobot.ReactiveUI.Avalonia.Unofficial</PackageProjectUrl>
+              <RepositoryUrl>https://github.com/autorepobot/Repobot.ReactiveUI.Avalonia.Unofficial</RepositoryUrl>
+              <RepositoryType>git</RepositoryType>
               <PackageLicenseExpression>MIT</PackageLicenseExpression>
               <PackageReadmeFile>README.md</PackageReadmeFile>
               <PackageIcon>logo.png</PackageIcon>
