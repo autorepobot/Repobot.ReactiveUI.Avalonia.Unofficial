@@ -19,9 +19,8 @@ jobs:
     steps:
       - name: Setup .NET
         uses: actions/setup-dotnet@v5
-
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v2
+        with:
+          dotnet-version: "10.0.x"
 
       - name: Download official package
         run: |
@@ -33,84 +32,46 @@ jobs:
         run: |
           set -e
 
-          mkdir src cleanpkg
+          mkdir src cleanproj
           unzip -q official.nupkg -d src
 
           find src -name ".DS_Store" -delete
 
-          cp -R src/lib cleanpkg/
-          cp -R src/LICENSE cleanpkg/ || true
-          cp src/README.md cleanpkg/ || true
-          cp src/logo.png cleanpkg/ || true
+          mkdir -p cleanproj/lib
+          cp -R src/lib/* cleanproj/lib/
 
-          python3 <<'PY'
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-          import copy
+          cp -R src/LICENSE cleanproj/ || true
+          cp src/README.md cleanproj/ || true
+          cp src/logo.png cleanproj/ || true
 
-          source_version = "${{ inputs.sourceVersion }}"
-          package_version = "${{ inputs.packageVersion }}"
-          package_id = "Repobot.ReactiveUI.Avalonia.Unofficial"
+          cat > cleanproj/Repobot.ReactiveUI.Avalonia.Unofficial.csproj <<EOF
+          <Project Sdk="Microsoft.NET.Sdk">
+            <PropertyGroup>
+              <TargetFramework>net8.0</TargetFramework>
+              <PackageId>Repobot.ReactiveUI.Avalonia.Unofficial</PackageId>
+              <Version>${{ inputs.packageVersion }}</Version>
+              <Authors>ReactiveUI contributors; unofficial repack by Repobot</Authors>
+              <Description>Unofficial repack of ReactiveUI.Avalonia ${{ inputs.sourceVersion }}. Package signature removed due to revoked author certificate. DLL/XML/content copied from the original package.</Description>
+              <PackageLicenseExpression>MIT</PackageLicenseExpression>
+              <PackageReadmeFile>README.md</PackageReadmeFile>
+              <PackageIcon>logo.png</PackageIcon>
+              <IncludeBuildOutput>false</IncludeBuildOutput>
+              <NoDefaultExcludes>true</NoDefaultExcludes>
+              <NoPackageAnalysis>true</NoPackageAnalysis>
+            </PropertyGroup>
 
-          src_nuspec = Path("src/ReactiveUI.Avalonia.nuspec")
-          tree = ET.parse(src_nuspec)
-          root = tree.getroot()
+            <ItemGroup>
+              <None Include="lib/**/*" Pack="true" PackagePath="lib/" />
+              <None Include="LICENSE/**/*" Pack="true" PackagePath="LICENSE/" />
+              <None Include="README.md" Pack="true" PackagePath="" />
+              <None Include="logo.png" Pack="true" PackagePath="" />
+            </ItemGroup>
+          </Project>
+          EOF
 
-          ns = ""
-          if root.tag.startswith("{"):
-              ns = root.tag.split("}")[0] + "}"
-
-          ET.register_namespace("", "http://schemas.microsoft.com/packaging/2013/05/nuspec.xsd")
-
-          metadata = root.find(f"{ns}metadata")
-
-          metadata.find(f"{ns}id").text = package_id
-          metadata.find(f"{ns}version").text = package_version
-
-          authors = metadata.find(f"{ns}authors")
-          if authors is not None:
-              authors.text = "ReactiveUI contributors; unofficial repack by Repobot"
-
-          description = metadata.find(f"{ns}description")
-          if description is not None:
-              description.text = (
-                  (description.text or "")
-                  + "\n\nUnofficial repack of ReactiveUI.Avalonia "
-                  + source_version
-                  + ". Package signature removed due to revoked author certificate. "
-                  + "DLL/XML/content copied from the original package."
-              )
-
-          # Remove package signature related metadata if present
-          for tag in ["signature", "certificate"]:
-              for node in metadata.findall(f"{ns}{tag}"):
-                  metadata.remove(node)
-
-          # Add explicit files section so nuget pack creates a clean package
-          files = root.find(f"{ns}files")
-          if files is not None:
-              root.remove(files)
-
-          files = ET.SubElement(root, f"{ns}files")
-
-          def add_file(src, target):
-              file_node = ET.SubElement(files, f"{ns}file")
-              file_node.set("src", src)
-              file_node.set("target", target)
-
-          add_file("lib/**/*", "lib")
-          add_file("LICENSE/**/*", "LICENSE")
-          add_file("README.md", "")
-          add_file("logo.png", "")
-
-          out = Path("cleanpkg") / f"{package_id}.nuspec"
-          tree.write(out, encoding="utf-8", xml_declaration=True)
-          PY
-
-          nuget pack "cleanpkg/Repobot.ReactiveUI.Avalonia.Unofficial.nuspec" \
-            -BasePath cleanpkg \
-            -OutputDirectory . \
-            -NoPackageAnalysis
+          dotnet pack cleanproj/Repobot.ReactiveUI.Avalonia.Unofficial.csproj \
+            -c Release \
+            -o .
 
       - name: Push to NuGet
         run: |
