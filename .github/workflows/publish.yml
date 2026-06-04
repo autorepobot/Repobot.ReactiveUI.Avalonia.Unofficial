@@ -41,8 +41,21 @@ jobs:
           cp -R src/lib/* cleanproj/lib/
 
           cp -R src/LICENSE cleanproj/ || true
-          cp src/README.md cleanproj/ || true
           cp src/logo.png cleanproj/ || true
+
+          cat > cleanproj/README.md <<EOF
+          # Repobot.ReactiveUI.Avalonia.Unofficial
+
+          Unofficial repack of \`ReactiveUI.Avalonia\` \`${{ inputs.sourceVersion }}\`.
+
+          This package copies the original DLL/XML/content from the official \`ReactiveUI.Avalonia\` NuGet package.
+
+          The original NuGet author signature is not included because the signing certificate was revoked and caused \`NU3012\` restore failures.
+
+          This package is not affiliated with or endorsed by the ReactiveUI project.
+
+          Use this package only as a temporary workaround.
+          EOF
 
           cat > cleanproj/Repobot.ReactiveUI.Avalonia.Unofficial.csproj <<EOF
           <Project Sdk="Microsoft.NET.Sdk">
